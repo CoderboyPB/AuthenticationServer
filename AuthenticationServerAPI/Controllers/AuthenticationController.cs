@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AuthenticationServerAPI.Models;
 using AuthenticationServerAPI.Services.PasswordHashes;
 using AuthenticationServerAPI.Models.Responses;
+using AuthenticationServerAPI.Services.TokenGenerators;
 
 namespace AuthenticationServerAPI.Controllers
 {
@@ -15,11 +16,13 @@ namespace AuthenticationServerAPI.Controllers
     {
         private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher _passwordHasher;
+        private readonly AccessTokenGenerator _accessTokenGenerator;
 
-        public AuthenticationController(IUserRepository userRepository, IPasswordHasher passwordHasher)
+        public AuthenticationController(IUserRepository userRepository, IPasswordHasher passwordHasher, AccessTokenGenerator accessTokenGenerator)
         {
             _userRepository = userRepository;
             _passwordHasher = passwordHasher;
+            _accessTokenGenerator = accessTokenGenerator;
         }
 
         [HttpPost("register")]
@@ -27,11 +30,10 @@ namespace AuthenticationServerAPI.Controllers
         {
             if (!ModelState.IsValid)
             {
-                IEnumerable<string> errorMessages = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage));
-                return BadRequest(new ErrorResponse(errorMessages));
+                return BadRequestState();
             }
 
-            if(registerRequest.Password != registerRequest.ConfirmPassword)
+            if (registerRequest.Password != registerRequest.ConfirmPassword)
             {
                 return BadRequest(new ErrorResponse("Password does not match confirm password"));
             }
@@ -59,6 +61,40 @@ namespace AuthenticationServerAPI.Controllers
             await _userRepository.Create(registrationUser);
 
             return Ok();
+        }
+
+        private IActionResult BadRequestState()
+        {
+            IEnumerable<string> errorMessages = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage));
+            return BadRequest(new ErrorResponse(errorMessages));
+        }
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest loginRequest)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequestState();
+            }
+
+            User user = await _userRepository.GetByUsername(loginRequest.Username);
+            if(user == null)
+            {
+                return Unauthorized();
+            }
+
+            bool isCorrectPassword = _passwordHasher.VerifyPassword(loginRequest.Password, user.PasswordHash);
+            if(!isCorrectPassword)
+            {
+                return Unauthorized();
+            }
+
+            string accessToken = _accessTokenGenerator.GenerateToken(user);
+
+            return Ok(new AuthenticatedUserResponse()
+            {
+                AccessToken = accessToken
+            });
         }
     }
 }
