@@ -1,6 +1,9 @@
 using AuthenticationServerAPI.Models;
+using AuthenticationServerAPI.Services.Authenticators;
 using AuthenticationServerAPI.Services.PasswordHashes;
+using AuthenticationServerAPI.Services.RefreshTokenRepositories;
 using AuthenticationServerAPI.Services.TokenGenerators;
+using AuthenticationServerAPI.Services.TokenValidators;
 using AuthenticationServerAPI.Services.UserRepositories;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -36,7 +39,14 @@ namespace AuthenticationServerAPI
 
             services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
             services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+            services.AddSingleton<IRefreshTokenRepository, InMemoryRefreshTokenRepository>();
+            services.AddSingleton<Authenticator>();
+
+            services.AddSingleton<TokenGenerator>();
             services.AddSingleton<AccessTokenGenerator>();
+            services.AddSingleton<RefreshTokenGenerator>();
+
+            services.AddSingleton<RefreshTokenValidator>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

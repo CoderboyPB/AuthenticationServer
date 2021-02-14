@@ -22,6 +22,11 @@ namespace AuthenticationServerAPI.Services.UserRepositories
            return Task.FromResult(_users.FirstOrDefault(u => u.Email == email));
         }
 
+        public Task<User> GetById(Guid id)
+        {
+            return Task.FromResult(_users.FirstOrDefault(u => u.Id == id));
+        }
+
         public Task<User> GetByUsername(string username)
         {
             return Task.FromResult(_users.FirstOrDefault(u => u.Username == username));

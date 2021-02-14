@@ -9,6 +9,9 @@ using AuthenticationServerAPI.Models;
 using AuthenticationServerAPI.Services.PasswordHashes;
 using AuthenticationServerAPI.Models.Responses;
 using AuthenticationServerAPI.Services.TokenGenerators;
+using AuthenticationServerAPI.Services.TokenValidators;
+using AuthenticationServerAPI.Services.RefreshTokenRepositories;
+using AuthenticationServerAPI.Services.Authenticators;
 
 namespace AuthenticationServerAPI.Controllers
 {
@@ -16,13 +19,17 @@ namespace AuthenticationServerAPI.Controllers
     {
         private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher _passwordHasher;
-        private readonly AccessTokenGenerator _accessTokenGenerator;
+        private readonly RefreshTokenValidator _refreshTokenValidator;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly Authenticator _authenticator;
 
-        public AuthenticationController(IUserRepository userRepository, IPasswordHasher passwordHasher, AccessTokenGenerator accessTokenGenerator)
+        public AuthenticationController(IUserRepository userRepository, IPasswordHasher passwordHasher, AccessTokenGenerator accessTokenGenerator, RefreshTokenGenerator refreshTokenGenerator, RefreshTokenValidator refreshTokenValidator, IRefreshTokenRepository refreshTokenRepository, Authenticator authenticator)
         {
             _userRepository = userRepository;
             _passwordHasher = passwordHasher;
-            _accessTokenGenerator = accessTokenGenerator;
+            _refreshTokenValidator = refreshTokenValidator;
+            _refreshTokenRepository = refreshTokenRepository;
+            _authenticator = authenticator;
         }
 
         [HttpPost("register")]
@@ -63,12 +70,6 @@ namespace AuthenticationServerAPI.Controllers
             return Ok();
         }
 
-        private IActionResult BadRequestState()
-        {
-            IEnumerable<string> errorMessages = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage));
-            return BadRequest(new ErrorResponse(errorMessages));
-        }
-
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest loginRequest)
         {
@@ -89,12 +90,48 @@ namespace AuthenticationServerAPI.Controllers
                 return Unauthorized();
             }
 
-            string accessToken = _accessTokenGenerator.GenerateToken(user);
+            AuthenticatedUserResponse response = await _authenticator.Authenticate(user);
 
-            return Ok(new AuthenticatedUserResponse()
+            return Ok(response);
+        }
+
+        [HttpPost("request")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshRequest refreshRequest)
+        {
+            if (!ModelState.IsValid)
             {
-                AccessToken = accessToken
-            });
+                return BadRequestState();
+            }
+
+            bool isValidRefreshToken = _refreshTokenValidator.Validate(refreshRequest.RefreshToken);
+            if (!isValidRefreshToken)
+            {
+                return BadRequest(new ErrorResponse("Invalid refresh token"));
+            }
+
+            RefreshToken refreshTokenDTO = await _refreshTokenRepository.GetByToken(refreshRequest.RefreshToken);
+            if(refreshTokenDTO == null)
+            {
+                return NotFound(new ErrorResponse("Invalid refresh token"));
+            }
+
+            _refreshTokenRepository.Delete(refreshTokenDTO.Id);
+
+            User user = await _userRepository.GetById(refreshTokenDTO.UserId);
+            if (user == null)
+            {
+                return NotFound(new ErrorResponse("User not found"));
+            }
+
+            AuthenticatedUserResponse response = await _authenticator.Authenticate(user);
+
+            return Ok(response);
+        }
+
+        private IActionResult BadRequestState()
+        {
+            IEnumerable<string> errorMessages = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage));
+            return BadRequest(new ErrorResponse(errorMessages));
         }
     }
 }

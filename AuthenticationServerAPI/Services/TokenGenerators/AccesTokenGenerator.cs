@@ -12,18 +12,17 @@ namespace AuthenticationServerAPI.Services.TokenGenerators
 {
     public class AccessTokenGenerator
     {
-        private readonly AuthenticationConfiguration _authenticationConfiguration;
+        private readonly AuthenticationConfiguration _config;
+        private readonly TokenGenerator _tokenGenerator;
 
-        public AccessTokenGenerator(AuthenticationConfiguration authenticationConfiguration)
+        public AccessTokenGenerator(AuthenticationConfiguration authenticationConfiguration, TokenGenerator tokenGenerator)
         {
-            _authenticationConfiguration = authenticationConfiguration;
+            _config = authenticationConfiguration;
+            _tokenGenerator = tokenGenerator;
         }
 
         public string GenerateToken(User user)
         {
-            SecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_authenticationConfiguration.AccessTokenSecret));
-            SigningCredentials credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
             List<Claim> claims = new List<Claim>()
             {
                 new Claim("id", user.Id.ToString()),
@@ -31,15 +30,7 @@ namespace AuthenticationServerAPI.Services.TokenGenerators
                 new Claim(ClaimTypes.Email, user.Email)
             };
 
-            JwtSecurityToken token = new JwtSecurityToken
-                (_authenticationConfiguration.Issuer, 
-                _authenticationConfiguration.Audience, 
-                claims, 
-                DateTime.UtcNow, 
-                DateTime.UtcNow.AddMinutes(_authenticationConfiguration.AccessTokenExpirationMinutes),
-                credentials);
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            return _tokenGenerator.GenerateToken(_config.AccessTokenSecret, _config.Issuer, _config.Audience, _config.AccessTokenExpirationMinutes, claims);
         }
     }
 }
